@@ -1,51 +1,82 @@
-# PDF Color Inverter - Production-Ready Application
+# PDF-FLux (PDF Color Inverter)
 
 A professional, privacy-focused web application for PDF color inversion with advanced processing modes and real-time preview.
 
 ## 🎯 Overview
 
-This is a **production-ready** application, not a prototype. It features:
+This is a **production-ready** application featuring:
 
-- **True PDF Manipulation**: Uses Apache PDFBox to parse and transform PDF content streams
-- **Preserves Quality**: Maintains text selectability, vector graphics, and print quality
-- **Privacy-First**: Local/temporary processing with auto-deletion
-- **Professional UI**: Clean, modern interface with dark/light themes
-- **Batch Processing**: Handle multiple files efficiently
-- **Advanced Modes**: Full inversion, grayscale, text-only, and custom dark mode
+- **True PDF Manipulation**: Uses Apache PDFBox to parse and transform PDF content streams.
+- **Privacy-First**: Local/temporary processing with auto-deletion.
+- **Real-Time Preview**: Live side-by-side comparison of original vs. inverted pages.
+- **Advanced Modes**:
+  - **Full Inversion**: Inverts all colors (White → Black).
+  - **Grayscale**: Converts to black & white, then inverts.
+  - **Text-Only**: Smartly inverts dark text while preserving light backgrounds.
+  - **Custom**: Optimized dark pattern for comfortable reading.
+
+## 🚀 How to Run
+
+You need two terminals to run the application (one for Backend, one for Frontend).
+
+### Prerequisites
+- Java 17 or higher
+- Python 3 (for serving frontend)
+- Maven (optional, only for building)
+
+### 1️⃣ Start Backend (Port 9090)
+This runs the Java Spring Boot server that handles PDF processing.
+
+```powershell
+# In Terminal 1
+java -jar target/pdf-inverter-backend-1.0.0.jar
+```
+
+### 2️⃣ Start Frontend (Port 8080)
+This serves the web interface.
+
+```powershell
+# In Terminal 2
+python -m http.server 8080
+```
+
+### 3️⃣ Access Application
+Open your browser and navigate to:
+**http://localhost:8080/index.html**
 
 ---
 
 ## 📁 Project Structure
 
 ```
-pdf-inverter/
-├── frontend/                  # React/HTML/CSS/JS Frontend
-│   ├── index.html            # Main application page
-│   ├── styles.css            # Professional styling with themes
-│   └── app.js                # Application logic & state management
-│
-├── backend/                   # Spring Boot Backend
-│   ├── src/main/java/com/pdfinverter/
-│   │   ├── PDFInverterApplication.java
-│   │   ├── controller/
-│   │   │   └── PDFController.java         # REST API endpoints
-│   │   ├── service/
-│   │   │   └── PDFProcessingService.java  # Core PDF processing
-│   │   ├── model/
-│   │   │   ├── PDFProcessRequest.java
-│   │   │   └── PDFProcessResponse.java
-│   │   └── util/
-│   │       ├── ColorInverter.java         # Color transformation logic
-│   │       └── PageRangeParser.java       # Page range parsing
-│   ├── src/main/resources/
-│   │   └── application.properties
-│   └── pom.xml               # Maven dependencies
-│
-└── docs/                      # Documentation
-    ├── API.md                # API specification
-    ├── ARCHITECTURE.md       # System design
-    └── DEPLOYMENT.md         # Deployment guide
+PDF-FLux/
+├── src/                       # Java Spring Boot Source Code
+│   └── main/java/com/pdfinverter/
+│       ├── controller/        # API Endpoints
+│       ├── model/             # Data Models
+│       ├── service/           # PDF Processing Logic
+│       └── util/              # Color Inversion Algorithms
+├── target/                    # Compiled Executable (JAR files)
+├── index.html                 # Frontend User Interface
+├── app.js                     # Frontend Logic (API calls, Preview)
+├── styles.css                 # Application Styling
+├── pom.xml                    # Maven Build Configuration
+└── API.md                     # API Documentation
 ```
+
+## 🛠️ Development
+
+### Rebuilding Backend
+If you modify Java code, rebuild the project:
+
+```powershell
+mvn clean install -DskipTests
+```
+
+### Configuration
+- **Backend Port**: 9090 (Configured in `src/main/resources/application.properties`)
+- **Frontend Port**: 8080 (Default for python http.server)
+- **Upload Limit**: 50MB
 
 ---
 
