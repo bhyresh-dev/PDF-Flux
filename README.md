@@ -17,7 +17,12 @@ This is a **production-ready** application featuring:
 
 ## 🚀 How to Run
 
-You need two terminals to run the application (one for Backend, one for Frontend).
+### Clone the Repository
+
+```powershell
+git clone https://github.com/bhyresh-dev/PDF-Flux.git
+cd PDF-Flux
+```
 
 ### Prerequisites
 - Java 17 or higher
