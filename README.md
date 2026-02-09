@@ -110,33 +110,44 @@ mvn clean install -DskipTests
 - Apache PDFBox 3.0.1 (PDF manipulation)
 - Tesseract (OCR for scanned PDFs)
 
-**Processing Pipeline:**
+**Processing Pipeline (v2 – true PDF manipulation):**
 
 ```
-Input PDF → Load with PDFBox → Parse Content Stream → 
-Transform Color Operators → Process Images → 
-Reassemble PDF → Return to Client
+Input PDF → Load with PDFBox → Parse Content Streams →
+Detect & Invert Colour Operators (rg/RG, g/G, k/K, sc/SC, scn/SCN) →
+Extract XObject Images → Invert Pixels → Re-embed →
+Recurse into Form XObjects → Prepend Inverted Background →
+Save Modified Document → Return to Client
 ```
 
 **Core Processing Logic:**
 
-1. **Content Stream Parsing**:
-   - Extract PDF operators and operands
-   - Identify color operators (rg, RG, k, K, g, G)
-   - Transform color values (inversion formula: 1 - value)
+1. **Content Stream Rewriting** (`ContentStreamColorInverter`):
+   - Tokenise the page content stream via `PDFStreamParser`
+   - Walk token list; when a colour operator is found, invert its operands
+   - Heuristic `sc/SC/scn/SCN` handling based on operand count
+   - Prepend an opaque background rectangle (inverted white)
+   - Write back with FlateDecode compression
 
 2. **Image Handling**:
-   - Extract image XObjects
-   - Convert to BufferedImage
-   - Invert pixels
-   - Re-embed with compression
+   - Enumerate `PDImageXObject` entries in page resources
+   - Extract to `BufferedImage`, invert pixels per mode, re-embed
+   - Uses `JPEGFactory` when `compress=true`, `LosslessFactory` otherwise
 
-3. **Text Preservation**:
-   - Never rasterize text
-   - Maintain font embedding
-   - Preserve character mapping
+3. **Form XObject Recursion**:
+   - Form XObjects have their own content streams and resources
+   - Recursed into automatically to invert nested graphics
 
-**Critical: This is NOT image conversion**
+4. **Metadata & Text Preservation**:
+   - Original document is modified in-place (no page-to-image conversion)
+   - Fonts, bookmarks, links, and annotations are untouched
+   - Selectable / searchable text is fully preserved
+
+5. **Output Controls**:
+   - `outputDpi` – quality hint for image re-encoding (150 / 300 / 600)
+   - `compress` – JPEG compression for embedded images (smaller output)
+
+**Critical: This is NOT image conversion.**
 We manipulate the actual PDF structure, not screenshots.
 
 ---

@@ -32,57 +32,88 @@ public class ColorInverter {
         int width = image.getWidth();
         int height = image.getHeight();
         
-        BufferedImage invertedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        boolean hasAlpha = image.getColorModel().hasAlpha();
+        int imgType = hasAlpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
+
+        // Normalise to a standard type so that getRGB() works consistently
+        // across all colour models (CMYK, Indexed, Gray, custom, etc.)
+        BufferedImage source;
+        if (image.getType() != imgType) {
+            source = new BufferedImage(width, height, imgType);
+            Graphics2D g2d = source.createGraphics();
+            g2d.drawImage(image, 0, 0, null);
+            g2d.dispose();
+        } else {
+            source = image;
+        }
+
+        BufferedImage invertedImage = new BufferedImage(width, height, imgType);
         
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                int rgb = image.getRGB(x, y);
+                int rgb = source.getRGB(x, y);
                 
+                int a = (rgb >> 24) & 0xFF;
                 int r = (rgb >> 16) & 0xFF;
                 int g = (rgb >> 8) & 0xFF;
                 int b = rgb & 0xFF;
                 
-                int newRGB;
+                // Skip fully transparent pixels – preserve transparency as-is
+                if (hasAlpha && a == 0) {
+                    invertedImage.setRGB(x, y, 0);
+                    continue;
+                }
+                
+                int nr, ng, nb;
                 
                 switch (mode) {
                     case FULL:
-                        newRGB = new Color(255 - r, 255 - g, 255 - b).getRGB();
+                        nr = 255 - r;
+                        ng = 255 - g;
+                        nb = 255 - b;
                         break;
                     case GRAYSCALE:
                         int gray = (int) (0.299 * r + 0.587 * g + 0.114 * b);
                         int invertedGray = 255 - gray;
-                        newRGB = new Color(invertedGray, invertedGray, invertedGray).getRGB();
+                        nr = invertedGray;
+                        ng = invertedGray;
+                        nb = invertedGray;
                         break;
                     case TEXT_ONLY:
-                        // Invert only dark colors (text), keep light colors (backgrounds)
                         int brightness = (r + g + b) / 3;
                         if (brightness < 128) {
-                            // Dark pixel - likely text, invert it
-                            newRGB = new Color(255 - r, 255 - g, 255 - b).getRGB();
+                            nr = 255 - r;
+                            ng = 255 - g;
+                            nb = 255 - b;
                         } else {
-                            // Light pixel - likely background, keep it
-                            newRGB = rgb;
+                            nr = r;
+                            ng = g;
+                            nb = b;
                         }
                         break;
                     case CUSTOM:
                         int avgBrightness = (r + g + b) / 3;
                         if (avgBrightness > 200) {
-                            newRGB = DARK_MODE_BACKGROUND.getRGB();
+                            nr = DARK_MODE_BACKGROUND.getRed();
+                            ng = DARK_MODE_BACKGROUND.getGreen();
+                            nb = DARK_MODE_BACKGROUND.getBlue();
                         } else if (avgBrightness < 55) {
-                            newRGB = DARK_MODE_TEXT.getRGB();
+                            nr = DARK_MODE_TEXT.getRed();
+                            ng = DARK_MODE_TEXT.getGreen();
+                            nb = DARK_MODE_TEXT.getBlue();
                         } else {
-                            newRGB = new Color(
-                                Math.max(0, Math.min(255, 255 - r + 30)),
-                                Math.max(0, Math.min(255, 255 - g + 30)),
-                                Math.max(0, Math.min(255, 255 - b + 30))
-                            ).getRGB();
+                            nr = Math.max(0, Math.min(255, 255 - r + 30));
+                            ng = Math.max(0, Math.min(255, 255 - g + 30));
+                            nb = Math.max(0, Math.min(255, 255 - b + 30));
                         }
                         break;
                     default:
-                        // Default to FULL inversion
-                        newRGB = new Color(255 - r, 255 - g, 255 - b).getRGB();
+                        nr = 255 - r;
+                        ng = 255 - g;
+                        nb = 255 - b;
                 }
                 
+                int newRGB = (a << 24) | (nr << 16) | (ng << 8) | nb;
                 invertedImage.setRGB(x, y, newRGB);
             }
         }

@@ -2,33 +2,25 @@ package com.pdfinverter.service;
 
 import com.pdfinverter.model.PDFProcessRequest;
 import com.pdfinverter.model.PDFProcessRequest.InversionMode;
-import com.pdfinverter.util.ColorInverter;
+import com.pdfinverter.model.PDFProcessRequest.RangeType;
+import com.pdfinverter.util.ContentStreamColorInverter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
+import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
 import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.contentstream.PDFStreamEngine;
-import org.apache.pdfbox.contentstream.operator.Operator;
-import org.apache.pdfbox.contentstream.operator.color.*;
-import org.apache.pdfbox.cos.COSBase;
-import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
-import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
-import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.rendering.PDFRenderer;
-import org.apache.pdfbox.rendering.ImageType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 @Slf4j
@@ -50,56 +42,52 @@ public class PDFProcessingService {
                 file.getOriginalFilename(), 
                 request != null && request.getMode() != null ? request.getMode() : "FULL");
         
-        // Load the original PDF
+        // Load the original PDF – modifying in-place preserves metadata, fonts,
+        // bookmarks, selectable text, vector graphics, and print quality.
         PDDocument document = Loader.loadPDF(file.getInputStream().readAllBytes());
         
         try {
-            // Determine inversion mode
             InversionMode mode = (request != null && request.getMode() != null) 
                     ? request.getMode() 
                     : InversionMode.FULL;
-            
-            // Create a new document for the inverted pages
-            PDDocument invertedDocument = new PDDocument();
-            PDFRenderer renderer = new PDFRenderer(document);
-            
-            // Process each page
-            for (int pageIndex = 0; pageIndex < document.getNumberOfPages(); pageIndex++) {
-                log.debug("Processing page {}/{}", pageIndex + 1, document.getNumberOfPages());
-                
-                // Render the page to an image
-                BufferedImage pageImage = renderer.renderImageWithDPI(pageIndex, 300, ImageType.RGB);
-                
-                // Invert the colors
-                BufferedImage invertedImage = ColorInverter.invertImage(pageImage, mode);
-                
-                // Create a new page in the output document
-                PDPage originalPage = document.getPage(pageIndex);
-                PDRectangle pageSize = originalPage.getMediaBox();
-                PDPage newPage = new PDPage(pageSize);
-                invertedDocument.addPage(newPage);
-                
-                // Convert the inverted image to PDImageXObject
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                ImageIO.write(invertedImage, "jpg", baos);
-                PDImageXObject pdImage = PDImageXObject.createFromByteArray(
-                        invertedDocument,
-                        baos.toByteArray(),
-                        "inverted_page_" + pageIndex
-                );
-                
-                // Draw the image on the new page
-                try (PDPageContentStream contentStream = new PDPageContentStream(
-                        invertedDocument, newPage, PDPageContentStream.AppendMode.OVERWRITE, true)) {
-                    contentStream.drawImage(pdImage, 0, 0, pageSize.getWidth(), pageSize.getHeight());
+
+            boolean compress = request != null && Boolean.TRUE.equals(request.getCompress());
+            int outputDpi = (request != null && request.getOutputDpi() != null)
+                    ? request.getOutputDpi() : 300;
+
+            List<Integer> pageIndexes = resolvePageIndexes(document, request);
+
+            // True PDF manipulation: rewrite colour operators & re-embed inverted images
+            for (int pageIndex : pageIndexes) {
+                try {
+                    log.debug("Processing page {}/{}", pageIndex + 1, document.getNumberOfPages());
+                    PDPage page = document.getPage(pageIndex);
+                    ContentStreamColorInverter.invertPage(document, page, mode, compress, outputDpi);
+                } catch (Exception e) {
+                    log.warn("Failed to invert page {}/{}: {}",
+                            pageIndex + 1, document.getNumberOfPages(), e.getMessage());
+                    // Continue with remaining pages instead of aborting the entire document
                 }
             }
+
+            // Remove non-selected pages so the output contains only the requested range.
+            // Iterate in reverse to preserve indices while removing.
+            RangeType rangeType = (request != null && request.getRangeType() != null)
+                    ? request.getRangeType() : RangeType.ALL;
+            if (rangeType != RangeType.ALL) {
+                Set<Integer> selectedSet = new HashSet<>(pageIndexes);
+                for (int i = document.getNumberOfPages() - 1; i >= 0; i--) {
+                    if (!selectedSet.contains(i)) {
+                        document.removePage(i);
+                    }
+                }
+                log.debug("Trimmed document to {} pages (range: {})", document.getNumberOfPages(), rangeType);
+            }
             
-            // Save the inverted document
+            // Save the modified document (original metadata is preserved automatically)
             String outputFileName = generateOutputFileName(file.getOriginalFilename());
             File outputFile = new File(TEMP_DIR + outputFileName);
-            invertedDocument.save(outputFile);
-            invertedDocument.close();
+            document.save(outputFile);
             
             log.info("PDF processed successfully: {}", outputFileName);
             return outputFile;
@@ -107,6 +95,157 @@ public class PDFProcessingService {
         } finally {
             document.close();
         }
+    }
+
+    public File processBatch(List<MultipartFile> files, PDFProcessRequest request) throws IOException {
+        if (files == null || files.isEmpty()) {
+            throw new IllegalArgumentException("No files provided for batch processing");
+        }
+
+        String batchFileName = "pdf_inverter_batch_" + UUID.randomUUID().toString().substring(0, 8) + ".zip";
+        File zipFile = new File(TEMP_DIR + batchFileName);
+
+        Set<String> usedNames = new HashSet<>();
+
+        try (ZipArchiveOutputStream zipStream = new ZipArchiveOutputStream(zipFile)) {
+            zipStream.setEncoding("UTF-8");
+
+            for (MultipartFile file : files) {
+                File processedFile = processPDF(file, request);
+                String entryName = buildZipEntryName(file.getOriginalFilename(), usedNames);
+
+                ZipArchiveEntry entry = new ZipArchiveEntry(entryName);
+                entry.setSize(processedFile.length());
+                zipStream.putArchiveEntry(entry);
+                Files.copy(processedFile.toPath(), zipStream);
+                zipStream.closeArchiveEntry();
+
+                if (!processedFile.delete()) {
+                    log.debug("Unable to delete temp file: {}", processedFile.getAbsolutePath());
+                }
+            }
+        }
+
+        return zipFile;
+    }
+
+    private List<Integer> resolvePageIndexes(PDDocument document, PDFProcessRequest request) {
+        int totalPages = document.getNumberOfPages();
+        RangeType rangeType = request != null && request.getRangeType() != null
+                ? request.getRangeType()
+                : RangeType.ALL;
+
+        List<Integer> pages = new ArrayList<>();
+
+        switch (rangeType) {
+            case ODD:
+                for (int i = 0; i < totalPages; i++) {
+                    if ((i + 1) % 2 == 1) {
+                        pages.add(i);
+                    }
+                }
+                break;
+            case EVEN:
+                for (int i = 0; i < totalPages; i++) {
+                    if ((i + 1) % 2 == 0) {
+                        pages.add(i);
+                    }
+                }
+                break;
+            case CUSTOM:
+                String customRange = request != null ? request.getCustomRange() : null;
+                pages.addAll(parseCustomRange(customRange, totalPages));
+                break;
+            case ALL:
+            default:
+                for (int i = 0; i < totalPages; i++) {
+                    pages.add(i);
+                }
+                break;
+        }
+
+        if (pages.isEmpty()) {
+            for (int i = 0; i < totalPages; i++) {
+                pages.add(i);
+            }
+        }
+
+        return pages;
+    }
+
+    private List<Integer> parseCustomRange(String customRange, int totalPages) {
+        if (customRange == null || customRange.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String normalized = customRange.replaceAll("\\s+", "");
+        String[] parts = normalized.split(",");
+        Set<Integer> pages = new TreeSet<>();
+
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                continue;
+            }
+
+            if (part.contains("-")) {
+                String[] bounds = part.split("-");
+                if (bounds.length != 2) {
+                    continue;
+                }
+
+                Integer start = parsePositiveInt(bounds[0]);
+                Integer end = parsePositiveInt(bounds[1]);
+                if (start == null || end == null) {
+                    continue;
+                }
+
+                if (start > end) {
+                    int temp = start;
+                    start = end;
+                    end = temp;
+                }
+
+                for (int page = start; page <= end; page++) {
+                    if (page >= 1 && page <= totalPages) {
+                        pages.add(page - 1);
+                    }
+                }
+            } else {
+                Integer page = parsePositiveInt(part);
+                if (page != null && page >= 1 && page <= totalPages) {
+                    pages.add(page - 1);
+                }
+            }
+        }
+
+        return new ArrayList<>(pages);
+    }
+
+    private Integer parsePositiveInt(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private String buildZipEntryName(String originalFilename, Set<String> usedNames) {
+        String baseName = originalFilename == null ? "file" : originalFilename.replaceFirst("[.][^.]+$", "");
+        String entryName = baseName + "_inverted.pdf";
+
+        if (!usedNames.contains(entryName)) {
+            usedNames.add(entryName);
+            return entryName;
+        }
+
+        int counter = 2;
+        while (usedNames.contains(baseName + "_inverted_" + counter + ".pdf")) {
+            counter++;
+        }
+
+        entryName = baseName + "_inverted_" + counter + ".pdf";
+        usedNames.add(entryName);
+        return entryName;
     }
 
     private String generateOutputFileName(String originalFilename) {

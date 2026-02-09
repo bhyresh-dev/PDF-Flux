@@ -2,13 +2,28 @@
 
 ## Base URL
 ```
-http://localhost:8080/api
+http://localhost:9090/api
 ```
 
 For production, replace with your domain:
 ```
 https://api.pdfinverter.com/api
 ```
+
+---
+
+## Engine (v2)
+
+The backend performs **true PDF manipulation** via Apache PDFBox
+content-stream rewriting.  Colour operators (`rg`/`RG`, `g`/`G`, `k`/`K`,
+`sc`/`SC`, `scn`/`SCN`) are detected and inverted in-place.  Embedded raster
+images are extracted as XObjects, pixel-inverted, and re-embedded.  Form
+XObjects are handled recursively.
+
+This preserves:
+* Selectable / searchable text
+* Vector graphics & print quality
+* Original metadata (author, title, bookmarks, etc.)
 
 ---
 
@@ -41,8 +56,8 @@ Process a single PDF file with color inversion.
 | mode | String | No | FULL | Inversion mode: `FULL`, `GRAYSCALE`, `TEXT_ONLY`, `CUSTOM` |
 | rangeType | String | No | ALL | Page range: `ALL`, `CUSTOM`, `ODD`, `EVEN` |
 | customRange | String | No | - | Custom page range (e.g., "1-5,10-20") |
-| outputDpi | Integer | No | 300 | Output DPI for quality control |
-| compress | Boolean | No | false | Apply compression to output |
+| outputDpi | Integer | No | 300 | Image re-encoding quality (150, 300, 600) |
+| compress | Boolean | No | false | Use JPEG compression for embedded images |
 | enableOCR | Boolean | No | false | Enable OCR for scanned PDFs |
 
 **Request Example**:

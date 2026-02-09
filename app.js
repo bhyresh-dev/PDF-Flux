@@ -7,12 +7,16 @@ const AppState = {
     currentConfig: {
         inversionMode: 'full',
         pageRange: 'all',
-        customRange: ''
+        customRange: '',
+        outputDpi: 300,
+        compress: false
     },
     processing: false,
-    currentUser: null,
+    processingHidden: false,
     theme: 'dark',
-    processedFiles: []
+    processedFiles: [],
+    previewIndex: 0,
+    filteredPages: []
 };
 
 // ========================================
@@ -146,14 +150,11 @@ class PreviewController {
         this.invertedPDF = null;
         this.currentPage = 1;
         this.totalPages = 1;
-        this.zoomLevel = 1.0;
+        this.filteredPageNumbers = []; // 1-based page numbers to show
         
         this.elements = {
             originalCanvas: document.getElementById('originalCanvas'),
             invertedCanvas: document.getElementById('invertedCanvas'),
-            zoomIn: document.getElementById('zoomIn'),
-            zoomOut: document.getElementById('zoomOut'),
-            zoomLevel: document.getElementById('zoomLevel'),
             prevPage: document.getElementById('prevPage'),
             nextPage: document.getElementById('nextPage'),
             pageInfo: document.getElementById('pageInfo')
@@ -161,15 +162,26 @@ class PreviewController {
         
         this.bindEvents();
     }
+
+    reset() {
+        this.originalPDF = null;
+        this.invertedPDF = null;
+        this.currentPage = 1;
+        this.totalPages = 1;
+        this.filteredPageNumbers = [];
+        this.elements.pageInfo.textContent = 'Page 1 of 1';
+        const originalContext = this.elements.originalCanvas.getContext('2d');
+        const invertedContext = this.elements.invertedCanvas.getContext('2d');
+        originalContext.clearRect(0, 0, this.elements.originalCanvas.width, this.elements.originalCanvas.height);
+        invertedContext.clearRect(0, 0, this.elements.invertedCanvas.width, this.elements.invertedCanvas.height);
+    }
     
     bindEvents() {
-        this.elements.zoomIn.addEventListener('click', () => this.zoom(0.1));
-        this.elements.zoomOut.addEventListener('click', () => this.zoom(-0.1));
         this.elements.prevPage.addEventListener('click', () => this.changePage(-1));
         this.elements.nextPage.addEventListener('click', () => this.changePage(1));
     }
     
-    async loadPDFs(originalFile, invertedBlob) {
+    async loadPDFs(originalFile, invertedBlob, filteredPages) {
         try {
             const originalArrayBuffer = await originalFile.arrayBuffer();
             const invertedArrayBuffer = await invertedBlob.arrayBuffer();
@@ -177,7 +189,17 @@ class PreviewController {
             this.originalPDF = await pdfjsLib.getDocument({ data: originalArrayBuffer }).promise;
             this.invertedPDF = await pdfjsLib.getDocument({ data: invertedArrayBuffer }).promise;
             
-            this.totalPages = this.originalPDF.numPages;
+            // filteredPages = 1-based page numbers that were processed
+            if (filteredPages && filteredPages.length > 0) {
+                this.filteredPageNumbers = filteredPages;
+            } else {
+                // Show all pages of the original
+                this.filteredPageNumbers = [];
+                for (let i = 1; i <= this.originalPDF.numPages; i++) {
+                    this.filteredPageNumbers.push(i);
+                }
+            }
+            this.totalPages = this.filteredPageNumbers.length;
             this.currentPage = 1;
             
             await this.renderCurrentPage();
@@ -189,12 +211,17 @@ class PreviewController {
     
     async renderCurrentPage() {
         try {
+            // Map filtered index to actual PDF page numbers
+            const originalPageNum = this.filteredPageNumbers[this.currentPage - 1];
+            // The inverted PDF only contains the filtered pages (sequentially numbered)
+            const invertedPageNum = this.currentPage;
+
             const [originalPage, invertedPage] = await Promise.all([
-                this.originalPDF.getPage(this.currentPage),
-                this.invertedPDF.getPage(this.currentPage)
+                this.originalPDF.getPage(originalPageNum),
+                this.invertedPDF.getPage(Math.min(invertedPageNum, this.invertedPDF.numPages))
             ]);
             
-            const viewport = originalPage.getViewport({ scale: this.zoomLevel });
+            const viewport = originalPage.getViewport({ scale: 1.0 });
             
             // Set canvas dimensions
             this.elements.originalCanvas.width = viewport.width;
@@ -208,19 +235,13 @@ class PreviewController {
             
             await Promise.all([
                 originalPage.render({ canvasContext: originalContext, viewport }).promise,
-                invertedPage.render({ canvasContext: invertedContext, viewport }).promise
+                invertedPage.render({ canvasContext: invertedContext, viewport: invertedPage.getViewport({ scale: 1.0 }) }).promise
             ]);
             
             this.updatePageInfo();
         } catch (error) {
             console.error('Error rendering page:', error);
         }
-    }
-    
-    zoom(delta) {
-        this.zoomLevel = Math.max(0.5, Math.min(3.0, this.zoomLevel + delta));
-        this.elements.zoomLevel.textContent = `${Math.round(this.zoomLevel * 100)}%`;
-        this.renderCurrentPage();
     }
     
     changePage(delta) {
@@ -232,7 +253,8 @@ class PreviewController {
     }
     
     updatePageInfo() {
-        this.elements.pageInfo.textContent = `Page ${this.currentPage} of ${this.totalPages}`;
+        const displayPage = this.filteredPageNumbers[this.currentPage - 1];
+        this.elements.pageInfo.textContent = `Page ${displayPage} (${this.currentPage} of ${this.totalPages})`;
         this.elements.prevPage.disabled = this.currentPage === 1;
         this.elements.nextPage.disabled = this.currentPage === this.totalPages;
     }
@@ -259,17 +281,21 @@ class UIController {
             processBtn: document.getElementById('processBtn'),
             cancelBtn: document.getElementById('cancelBtn'),
             downloadBtn: document.getElementById('downloadBtn'),
-            processAnotherBtn: document.getElementById('processAnotherBtn'),
             clearFiles: document.getElementById('clearFiles'),
             
             processingStatus: document.getElementById('processingStatus'),
             progressFill: document.getElementById('progressFill'),
+
+            previewFileSelect: document.getElementById('previewFileSelect'),
+            previewFileName: document.getElementById('previewFileName'),
+            prevFile: document.getElementById('prevFile'),
+            nextFile: document.getElementById('nextFile'),
             
             themeToggle: document.getElementById('themeToggle'),
-            authBtn: document.getElementById('authBtn'),
-            authModal: document.getElementById('authModal'),
-            modalClose: document.getElementById('modalClose'),
-            modalOverlay: document.getElementById('modalOverlay')
+
+            logoLink: document.getElementById('logoLink'),
+            pageRangeCard: document.getElementById('pageRangeCard'),
+            resultsFileList: document.getElementById('resultsFileList')
         };
 
         this.previewController = new PreviewController();
@@ -278,29 +304,24 @@ class UIController {
     }
 
     bindEvents() {
-        // Upload events
+        // Logo → home
+        this.elements.logoLink?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.resetApp(false);
+        });
+
+        // Upload events — also acts as "Upload New" when on results page
         this.elements.uploadZone.addEventListener('click', () => {
+            // If on results page, reset first
+            if (AppState.processedFiles.length > 0) {
+                this.resetApp(true);
+                return;
+            }
             this.elements.fileInput.click();
         });
 
         this.elements.fileInput.addEventListener('change', (e) => {
             this.handleFileSelect(e.target.files);
-        });
-
-        // Drag and drop
-        this.elements.uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            this.elements.uploadZone.classList.add('drag-over');
-        });
-
-        this.elements.uploadZone.addEventListener('dragleave', () => {
-            this.elements.uploadZone.classList.remove('drag-over');
-        });
-
-        this.elements.uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            this.elements.uploadZone.classList.remove('drag-over');
-            this.handleFileSelect(e.dataTransfer.files);
         });
 
         // Config events
@@ -322,6 +343,15 @@ class UIController {
             AppState.currentConfig.customRange = e.target.value;
         });
 
+        // Output settings
+        document.getElementById('outputDpi')?.addEventListener('change', (e) => {
+            AppState.currentConfig.outputDpi = Number(e.target.value);
+        });
+
+        document.getElementById('compressOutput')?.addEventListener('change', (e) => {
+            AppState.currentConfig.compress = e.target.checked;
+        });
+
         // Preset buttons
         document.querySelectorAll('.preset-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -333,7 +363,25 @@ class UIController {
                 
                 AppState.currentConfig.inversionMode = mode;
                 AppState.currentConfig.pageRange = range;
+                const customInput = document.getElementById('customRangeInput');
+                customInput.style.display = range === 'custom' ? 'flex' : 'none';
             });
+        });
+
+        this.elements.previewFileSelect?.addEventListener('change', (e) => {
+            const index = Number(e.target.value);
+            if (!Number.isNaN(index)) {
+                AppState.previewIndex = index;
+                this.loadPreviewByIndex(index);
+            }
+        });
+
+        this.elements.prevFile?.addEventListener('click', () => {
+            this.shiftPreviewFile(-1);
+        });
+
+        this.elements.nextFile?.addEventListener('click', () => {
+            this.shiftPreviewFile(1);
         });
 
         // Button events
@@ -353,31 +401,9 @@ class UIController {
             this.downloadResults();
         });
 
-        this.elements.processAnotherBtn?.addEventListener('click', () => {
-            this.resetApp();
-        });
-
         // Theme toggle
         this.elements.themeToggle?.addEventListener('click', () => {
             this.toggleTheme();
-        });
-
-        // Auth modal
-        this.elements.authBtn?.addEventListener('click', () => {
-            this.openAuthModal();
-        });
-
-        this.elements.modalClose?.addEventListener('click', () => {
-            this.closeAuthModal();
-        });
-
-        this.elements.modalOverlay?.addEventListener('click', () => {
-            this.closeAuthModal();
-        });
-
-        document.getElementById('authForm')?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleAuth();
         });
     }
 
@@ -408,6 +434,7 @@ class UIController {
         this.updateFileList();
         this.showSection('fileListSection');
         this.showSection('configSection');
+        this.updatePageRangeVisibility();
     }
 
     async updateFileList() {
@@ -473,6 +500,7 @@ class UIController {
             this.hideSection('configSection');
         } else {
             this.updateFileList();
+            this.updatePageRangeVisibility();
         }
     }
 
@@ -485,10 +513,37 @@ class UIController {
     async processFiles() {
         if (AppState.files.length === 0) return;
 
+        if (AppState.processing) return;
+
+        if (AppState.currentConfig.pageRange === 'custom') {
+            const rangeCheck = this.validateCustomRange(AppState.currentConfig.customRange);
+            if (!rangeCheck.valid) {
+                alert(rangeCheck.message);
+                return;
+            }
+            AppState.currentConfig.customRange = rangeCheck.value;
+        }
+
         this.showSection('processingSection');
         this.hideSection('configSection');
+        this.hideSection('resultsSection');
+        this.hideSection('previewSection');
         
         AppState.processing = true;
+        AppState.processingHidden = false;
+        AppState.processedFiles = [];
+        AppState.previewIndex = 0;
+
+        // Compute which page numbers (1-based) are selected for preview
+        const filteredPages = this.computeFilteredPages();
+
+        const processingConfig = {
+            inversionMode: AppState.currentConfig.inversionMode,
+            pageRange: AppState.currentConfig.pageRange,
+            customRange: AppState.currentConfig.customRange,
+            outputDpi: AppState.currentConfig.outputDpi,
+            compress: AppState.currentConfig.compress
+        };
 
         try {
             // Simulate processing with progress updates
@@ -507,7 +562,7 @@ class UIController {
                 this.elements.progressFill.style.width = `${progress}%`;
 
                 // Actual API call would go here
-                await this.processFile(fileData);
+                await this.processFile(fileData, processingConfig);
                 
                 // Save to history
                 await storage.saveHistory({
@@ -521,17 +576,21 @@ class UIController {
             // Processing complete
             AppState.processing = false;
             this.hideSection('processingSection');
+            this.hideSection('fileListSection');
             
             // Show preview if we have processed files
             if (AppState.processedFiles.length > 0) {
+                // Store filteredPages so preview can use them
+                AppState.filteredPages = filteredPages;
+                this.updatePreviewSelect();
                 this.showSection('previewSection');
-                await this.previewController.loadPDFs(
-                    AppState.files[0].file, 
-                    AppState.processedFiles[0].blob
-                );
+                await this.loadPreviewByIndex(0);
             }
-            
+            this.updateDownloadButtonLabel();
+            this.buildResultsFileList();
             this.showSection('resultsSection');
+
+            AppState.files = [];
 
         } catch (error) {
             console.error('Processing error:', error);
@@ -540,15 +599,18 @@ class UIController {
         }
     }
 
-    async processFile(fileData) {
+    async processFile(fileData, processingConfig) {
         const formData = new FormData();
         formData.append('file', fileData.file);
-        formData.append('mode', AppState.currentConfig.inversionMode.toUpperCase().replace('-', '_'));
-        formData.append('rangeType', AppState.currentConfig.pageRange.toUpperCase());
+        formData.append('mode', processingConfig.inversionMode.toUpperCase().replace(/-/g, '_'));
+        formData.append('rangeType', processingConfig.pageRange.toUpperCase());
         
-        if (AppState.currentConfig.pageRange === 'custom') {
-            formData.append('customRange', AppState.currentConfig.customRange);
+        if (processingConfig.pageRange === 'custom') {
+            formData.append('customRange', processingConfig.customRange);
         }
+
+        formData.append('outputDpi', String(processingConfig.outputDpi || 300));
+        formData.append('compress', String(processingConfig.compress || false));
 
         try {
             const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.process}`, {
@@ -564,15 +626,22 @@ class UIController {
 
             const blob = await response.blob();
             const fileName = fileData.name.replace('.pdf', '_inverted.pdf');
-            
-            // Clear old processed files to avoid preview caching issues
-            AppState.processedFiles = [];
-            
-            AppState.processedFiles.push({
+
+            const existingIndex = AppState.processedFiles.findIndex(
+                item => item.originalFile.name === fileData.file.name
+            );
+
+            const processedEntry = {
                 name: fileName,
                 blob: blob,
                 originalFile: fileData.file
-            });
+            };
+
+            if (existingIndex >= 0) {
+                AppState.processedFiles[existingIndex] = processedEntry;
+            } else {
+                AppState.processedFiles.push(processedEntry);
+            }
         } catch (error) {
             console.error('API error:', error);
             throw error;
@@ -580,12 +649,14 @@ class UIController {
     }
 
     cancelProcessing() {
-        AppState.processing = false;
+        AppState.processingHidden = true;
         this.hideSection('processingSection');
         this.showSection('configSection');
     }
 
-    downloadResults() {
+    async downloadResults() {
+        if (AppState.processedFiles.length === 0) return;
+
         if (AppState.processedFiles.length === 1) {
             // Single file download
             const file = AppState.processedFiles[0];
@@ -599,19 +670,204 @@ class UIController {
             URL.revokeObjectURL(url);
         } else {
             // ZIP download for multiple files
-            alert('ZIP download for multiple files coming soon!');
+            if (!window.JSZip) {
+                alert('ZIP download requires JSZip. Please refresh the page and try again.');
+                return;
+            }
+
+            const zip = new JSZip();
+            AppState.processedFiles.forEach(file => {
+                zip.file(file.name, file.blob);
+            });
+
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pdf_inverter_batch.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
     }
 
-    resetApp() {
+    resetApp(openPicker = false) {
         AppState.files = [];
         AppState.processedFiles = [];
+        AppState.previewIndex = 0;
+        AppState.filteredPages = [];
+        AppState.processing = false;
+        AppState.processingHidden = false;
         this.elements.fileInput.value = '';
+        this.elements.previewFileSelect.innerHTML = '';
+        this.elements.previewFileName.textContent = '';
+        this.previewController.reset();
+        const customRangeInput = document.getElementById('customRange');
+        if (customRangeInput) {
+            customRangeInput.value = '';
+        }
+        AppState.currentConfig.customRange = '';
+        AppState.currentConfig.outputDpi = 300;
+        AppState.currentConfig.compress = false;
+
+        const dpiSelect = document.getElementById('outputDpi');
+        if (dpiSelect) dpiSelect.value = '300';
+        const compressCheck = document.getElementById('compressOutput');
+        if (compressCheck) compressCheck.checked = false;
+
+        // Clear results file list
+        if (this.elements.resultsFileList) {
+            this.elements.resultsFileList.innerHTML = '';
+        }
         
         this.hideSection('fileListSection');
         this.hideSection('configSection');
         this.hideSection('resultsSection');
+        this.hideSection('previewSection');
+        this.hideSection('processingSection');
         this.showSection('uploadSection');
+
+        if (openPicker) {
+            requestAnimationFrame(() => {
+                this.elements.fileInput.click();
+            });
+        }
+    }
+
+    validateCustomRange(range) {
+        const trimmed = range.trim();
+        if (!trimmed) {
+            return { valid: false, message: 'Please enter a custom page range.' };
+        }
+        if (!/^[0-9,\-\s]+$/.test(trimmed)) {
+            return { valid: false, message: 'Custom range should include only numbers, commas, and hyphens.' };
+        }
+        return { valid: true, value: trimmed.replace(/\s+/g, '') };
+    }
+
+    updatePreviewSelect() {
+        if (!this.elements.previewFileSelect || !this.elements.prevFile || !this.elements.nextFile) return;
+
+        this.elements.previewFileSelect.innerHTML = '';
+        AppState.processedFiles.forEach((file, index) => {
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = file.originalFile.name;
+            this.elements.previewFileSelect.appendChild(option);
+        });
+
+        this.elements.previewFileSelect.value = String(AppState.previewIndex || 0);
+        const showNav = AppState.processedFiles.length > 1;
+        this.elements.previewFileSelect.style.display = showNav ? 'inline-flex' : 'none';
+        this.elements.prevFile.style.display = showNav ? 'inline-flex' : 'none';
+        this.elements.nextFile.style.display = showNav ? 'inline-flex' : 'none';
+        this.updatePreviewNavButtons();
+    }
+
+    async loadPreviewByIndex(index) {
+        const file = AppState.processedFiles[index];
+        if (!file) return;
+
+        this.elements.previewFileName.textContent = file.originalFile.name;
+        this.previewController.reset();
+        await this.previewController.loadPDFs(file.originalFile, file.blob, AppState.filteredPages || []);
+        this.updatePreviewNavButtons();
+    }
+
+    shiftPreviewFile(delta) {
+        if (AppState.processedFiles.length === 0 || !this.elements.previewFileSelect) return;
+        const nextIndex = Math.max(
+            0,
+            Math.min(AppState.processedFiles.length - 1, AppState.previewIndex + delta)
+        );
+        if (nextIndex === AppState.previewIndex) return;
+        AppState.previewIndex = nextIndex;
+        this.elements.previewFileSelect.value = String(nextIndex);
+        this.loadPreviewByIndex(nextIndex);
+    }
+
+    updatePreviewNavButtons() {
+        if (!this.elements.prevFile || !this.elements.nextFile) return;
+        this.elements.prevFile.disabled = AppState.previewIndex <= 0;
+        this.elements.nextFile.disabled = AppState.previewIndex >= AppState.processedFiles.length - 1;
+    }
+
+    updateDownloadButtonLabel() {
+        const label = document.getElementById('downloadBtnLabel');
+        const btn = this.elements.downloadBtn;
+        if (!label || !btn) return;
+        if (AppState.processedFiles.length === 1) {
+            label.textContent = 'Download PDF';
+        } else {
+            label.textContent = 'Download ZIP';
+        }
+        // Hide download ZIP button if single file (already has individual download)
+        if (AppState.processedFiles.length <= 1) {
+            btn.style.display = 'none';
+        } else {
+            btn.style.display = 'inline-flex';
+        }
+    }
+
+    /** Build per-file download list in results section */
+    buildResultsFileList() {
+        const container = this.elements.resultsFileList;
+        if (!container) return;
+        container.innerHTML = '';
+
+        AppState.processedFiles.forEach((file, index) => {
+            const item = document.createElement('div');
+            item.className = 'result-file-item';
+            item.innerHTML = `
+                <div class="result-file-info">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7 2h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2z"/>
+                        <path d="M14 2v5h5" stroke="white" stroke-width="2" fill="none"/>
+                    </svg>
+                    <span class="result-file-name">${file.name}</span>
+                </div>
+                <button class="btn btn-secondary btn-sm result-download-btn" data-index="${index}">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                    </svg>
+                    Download
+                </button>
+            `;
+            item.querySelector('.result-download-btn').addEventListener('click', () => {
+                this.downloadSingleFile(index);
+            });
+            container.appendChild(item);
+        });
+    }
+
+    /** Download a single processed file by index */
+    downloadSingleFile(index) {
+        const file = AppState.processedFiles[index];
+        if (!file) return;
+        const url = URL.createObjectURL(file.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /** Show/hide page range card depending on file count */
+    updatePageRangeVisibility() {
+        const card = this.elements.pageRangeCard;
+        if (!card) return;
+        if (AppState.files.length > 1) {
+            card.style.display = 'none';
+            // Reset to 'all' when hidden
+            document.querySelector('input[name="pageRange"][value="all"]').checked = true;
+            AppState.currentConfig.pageRange = 'all';
+            document.getElementById('customRangeInput').style.display = 'none';
+        } else {
+            card.style.display = '';
+        }
     }
 
     formatFileSize(bytes) {
@@ -654,38 +910,58 @@ class UIController {
         storage.savePreference('theme', AppState.theme);
     }
 
-    // Auth Modal
-    openAuthModal() {
-        this.elements.authModal.classList.add('active');
-    }
+    /**
+     * Compute which 1-based page numbers should be shown in preview
+     * based on current page-range config. We estimate using the first file's page count.
+     */
+    computeFilteredPages() {
+        const range = AppState.currentConfig.pageRange;
+        // We don't know exact page count until loaded; for preview we'll compute per-file later.
+        // Return a descriptor the preview will resolve per file.
+        if (range === 'all') return [];
 
-    closeAuthModal() {
-        this.elements.authModal.classList.remove('active');
-    }
+        // For odd/even/custom, we need the page count. We'll use the first file's count as reference.
+        const firstFile = AppState.files[0];
+        const totalPages = firstFile ? firstFile.pageCount : 0;
+        if (!totalPages) return [];
 
-    async handleAuth() {
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-
-        // In production, make actual API call
-        /*
-        const response = await fetch(`${API_CONFIG.baseUrl}${API_CONFIG.endpoints.auth}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-
-        if (response.ok) {
-            const user = await response.json();
-            AppState.currentUser = user;
-            this.closeAuthModal();
-            this.elements.authBtn.textContent = user.name;
+        const pages = [];
+        if (range === 'odd') {
+            for (let i = 1; i <= totalPages; i++) { if (i % 2 === 1) pages.push(i); }
+        } else if (range === 'even') {
+            for (let i = 1; i <= totalPages; i++) { if (i % 2 === 0) pages.push(i); }
+        } else if (range === 'custom') {
+            const parsed = this.parseCustomRangePages(AppState.currentConfig.customRange, totalPages);
+            pages.push(...parsed);
         }
-        */
+        return pages;
+    }
 
-        // Demo
-        alert('Authentication feature coming soon!');
-        this.closeAuthModal();
+    /**
+     * Parse custom range string into 1-based page numbers
+     */
+    parseCustomRangePages(rangeStr, totalPages) {
+        if (!rangeStr) return [];
+        const normalized = rangeStr.replace(/\s+/g, '');
+        const parts = normalized.split(',');
+        const pages = new Set();
+        for (const part of parts) {
+            if (!part) continue;
+            if (part.includes('-')) {
+                const [startStr, endStr] = part.split('-');
+                let start = parseInt(startStr, 10);
+                let end = parseInt(endStr, 10);
+                if (isNaN(start) || isNaN(end)) continue;
+                if (start > end) { const t = start; start = end; end = t; }
+                for (let p = start; p <= end; p++) {
+                    if (p >= 1 && p <= totalPages) pages.add(p);
+                }
+            } else {
+                const p = parseInt(part, 10);
+                if (!isNaN(p) && p >= 1 && p <= totalPages) pages.add(p);
+            }
+        }
+        return Array.from(pages).sort((a, b) => a - b);
     }
 }
 

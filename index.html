@@ -8,6 +8,7 @@
     
     <!-- PDF.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,7 +22,7 @@
     <header class="app-header">
         <div class="container">
             <div class="header-content">
-                <div class="logo-section">
+                <a href="#" class="logo-section" id="logoLink" title="Go to home">
                     <svg class="logo-icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
                         <path d="M8 4H20L28 12V28H8V4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
                         <path d="M20 4V12H28" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -29,7 +30,7 @@
                         <path d="M16 17V23M13 20H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                     </svg>
                     <h1 class="logo-text">PDF Inverter</h1>
-                </div>
+                </a>
                 
                 <div class="header-actions">
                     <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
@@ -40,7 +41,6 @@
                             <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
                         </svg>
                     </button>
-                    <button class="btn btn-secondary" id="authBtn">Sign In</button>
                 </div>
             </div>
         </div>
@@ -55,13 +55,12 @@
                 <div class="upload-card">
                     <div class="upload-zone" id="uploadZone">
                         <input type="file" id="fileInput" accept=".pdf" multiple hidden>
-                        <svg class="upload-icon" width="64" height="64" viewBox="0 0 64 64" fill="none">
+                        <svg class="upload-icon" width="48" height="48" viewBox="0 0 64 64" fill="none">
                             <path d="M32 12V42M32 12L22 22M32 12L42 22" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                             <path d="M14 34V50C14 51.1046 14.8954 52 16 52H48C49.1046 52 50 51.1046 50 50V34" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
                         </svg>
-                        <h2 class="upload-title">Drop PDF files here</h2>
-                        <p class="upload-subtitle">or click to browse</p>
-                        <p class="upload-hint">Supports batch uploads • Max 50MB per file</p>
+                        <h2 class="upload-title">Upload PDF files</h2>
+                        <p class="upload-subtitle">Click to browse • Supports batch uploads • Max 50MB per file</p>
                     </div>
                     
                     <div class="privacy-notice">
@@ -73,7 +72,7 @@
                 </div>
             </section>
 
-            <!-- File List Section -->
+            <!-- File List + Process Button merged section -->
             <section class="file-list-section" id="fileListSection" style="display: none;">
                 <div class="files-container">
                     <div class="section-header">
@@ -81,6 +80,14 @@
                         <button class="btn-text" id="clearFiles">Clear All</button>
                     </div>
                     <div class="file-list" id="fileList"></div>
+                    <div class="process-action-bar">
+                        <button class="btn btn-primary btn-process" id="processBtn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                            </svg>
+                            Process PDFs
+                        </button>
+                    </div>
                 </div>
             </section>
 
@@ -123,8 +130,8 @@
                         </div>
                     </div>
 
-                    <!-- Page Range -->
-                    <div class="config-card">
+                    <!-- Page Range (hidden when multiple files) -->
+                    <div class="config-card" id="pageRangeCard">
                         <h3 class="config-title">Page Range</h3>
                         <div class="page-range-selector">
                             <label class="range-option">
@@ -180,17 +187,34 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- Output Settings -->
+                    <div class="config-card">
+                        <h3 class="config-title">Output Settings</h3>
+                        <div class="output-settings">
+                            <div class="setting-row">
+                                <label for="outputDpi" class="setting-label">Image DPI</label>
+                                <select id="outputDpi" class="setting-select">
+                                    <option value="150">150 DPI &mdash; Draft</option>
+                                    <option value="300" selected>300 DPI &mdash; Standard</option>
+                                    <option value="600">600 DPI &mdash; High Quality</option>
+                                </select>
+                            </div>
+                            <div class="setting-row">
+                                <label class="toggle-label" for="compressOutput">
+                                    <span class="setting-label">Compress output</span>
+                                    <span class="toggle-wrapper">
+                                        <input type="checkbox" id="compressOutput">
+                                        <span class="toggle-switch"></span>
+                                    </span>
+                                </label>
+                                <span class="setting-hint">Use JPEG for embedded images (smaller file size)</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Process Button -->
-                <div class="action-bar">
-                    <button class="btn btn-primary btn-lg" id="processBtn">
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
-                        </svg>
-                        Process PDFs
-                    </button>
-                </div>
+                <!-- Process Button moved to file list section -->
             </section>
 
             <!-- Processing Section -->
@@ -208,25 +232,54 @@
                 </div>
             </section>
 
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <div class="results-card">
+                    <div class="success-icon">
+                        <svg width="56" height="56" viewBox="0 0 64 64" fill="none">
+                            <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="3"/>
+                            <path d="M20 32L28 40L44 24" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <h2>Processing Complete!</h2>
+                    <p class="results-message">Your PDFs have been successfully inverted.</p>
+
+                    <!-- Individual file download list -->
+                    <div class="results-file-list" id="resultsFileList"></div>
+
+                    <div class="results-actions">
+                        <button class="btn btn-primary btn-lg" id="downloadBtn">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                            <span id="downloadBtnLabel">Download</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             <!-- Preview Section -->
             <section class="preview-section" id="previewSection" style="display: none;">
                 <div class="preview-container">
                     <div class="preview-header">
-                        <h2>Preview</h2>
+                        <div class="preview-title">
+                            <h2>Preview</h2>
+                            <span class="preview-filename" id="previewFileName"></span>
+                        </div>
                         <div class="preview-controls">
-                            <button class="btn-icon" id="zoomOut" title="Zoom out">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M5 8a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z"/>
-                                    <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
-                                </svg>
-                            </button>
-                            <span id="zoomLevel">100%</span>
-                            <button class="btn-icon" id="zoomIn" title="Zoom in">
-                                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M8 4a1 1 0 011 1v2h2a1 1 0 110 2h-2v2a1 1 0 11-2 0V9H5a1 1 0 010-2h2V5a1 1 0 011-1z"/>
-                                    <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
-                                </svg>
-                            </button>
+                            <div class="preview-file-nav">
+                                <button class="btn-icon" id="prevFile" title="Previous file">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                    </svg>
+                                </button>
+                                <select id="previewFileSelect" class="preview-file-select" aria-label="Select file to preview"></select>
+                                <button class="btn-icon" id="nextFile" title="Next file">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="preview-panels">
@@ -257,77 +310,8 @@
                 </div>
             </section>
 
-            <!-- Results Section -->
-            <section class="results-section" id="resultsSection" style="display: none;">
-                <div class="results-card">
-                    <div class="success-icon">
-                        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-                            <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="3"/>
-                            <path d="M20 32L28 40L44 24" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </div>
-                    <h2>Processing Complete!</h2>
-                    <p class="results-message">Your PDFs have been successfully inverted.</p>
-                    <div class="results-actions">
-                        <button class="btn btn-primary btn-lg" id="downloadBtn">
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
-                            </svg>
-                            Download
-                        </button>
-                        <button class="btn btn-secondary" id="processAnotherBtn">Process Another</button>
-                    </div>
-                </div>
-            </section>
-
         </div>
     </main>
-
-    <!-- Auth Modal -->
-    <div class="modal" id="authModal">
-        <div class="modal-overlay" id="modalOverlay"></div>
-        <div class="modal-content">
-            <button class="modal-close" id="modalClose">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M18 6L6 18M6 6l12 12" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-            </button>
-            <div class="auth-container">
-                <h2 class="auth-title">Sign In</h2>
-                <p class="auth-subtitle">Sign in to save your processing history and preferences</p>
-                
-                <button class="btn btn-oauth">
-                    <svg width="20" height="20" viewBox="0 0 20 20">
-                        <path fill="#4285F4" d="M19.6 10.23c0-.82-.1-1.42-.25-2.05H10v3.72h5.5c-.15.96-.74 2.31-2.04 3.22v2.45h3.16c1.89-1.73 2.98-4.3 2.98-7.34z"/>
-                        <path fill="#34A853" d="M13.46 15.13c-.83.59-1.96 1-3.46 1-2.64 0-4.88-1.74-5.68-4.15H1.07v2.52C2.72 17.75 6.09 20 10 20c2.7 0 4.96-.89 6.62-2.42l-3.16-2.45z"/>
-                        <path fill="#FBBC05" d="M3.99 10c0-.69.12-1.35.32-1.97V5.51H1.07A9.973 9.973 0 000 10c0 1.61.39 3.14 1.07 4.49l3.24-2.52c-.2-.62-.32-1.28-.32-1.97z"/>
-                        <path fill="#EA4335" d="M10 3.88c1.88 0 3.13.81 3.85 1.48l2.84-2.76C14.96.99 12.7 0 10 0 6.09 0 2.72 2.25 1.07 5.51l3.24 2.52C5.12 5.62 7.36 3.88 10 3.88z"/>
-                    </svg>
-                    Continue with Google
-                </button>
-                
-                <div class="divider">
-                    <span>or</span>
-                </div>
-                
-                <form class="auth-form" id="authForm">
-                    <div class="form-group">
-                        <label for="email">Email</label>
-                        <input type="email" id="email" placeholder="you@example.com" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="password">Password</label>
-                        <input type="password" id="password" placeholder="••••••••" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-                </form>
-                
-                <p class="auth-footer">
-                    Don't have an account? <a href="#" id="signUpLink">Sign up</a>
-                </p>
-            </div>
-        </div>
-    </div>
 
     <!-- Footer -->
     <footer class="app-footer">
