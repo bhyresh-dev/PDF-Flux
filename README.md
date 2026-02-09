@@ -21,10 +21,17 @@ You need two terminals to run the application (one for Backend, one for Frontend
 
 ### Prerequisites
 - Java 17 or higher
+- Maven (required for building the backend JAR)
 - Python 3 (for serving frontend)
-- Maven (optional, only for building)
 
-### 1️⃣ Start Backend (Port 9090)
+### 1️⃣ Build Backend (First time / after cloning)
+The `target/` folder is not included in the repository. You must build the JAR before running:
+
+```powershell
+mvn clean package -DskipTests
+```
+
+### 2️⃣ Start Backend (Port 9090)
 This runs the Java Spring Boot server that handles PDF processing.
 
 ```powershell
