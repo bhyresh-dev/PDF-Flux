@@ -1,0 +1,28 @@
+# Build directories
+target/
+build/
+dist/
+*.class
+*.jar
+*.war
+
+# Node modules
+node_modules/
+package-lock.json
+yarn.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
