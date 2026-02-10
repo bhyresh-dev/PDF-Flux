@@ -297,7 +297,16 @@ class UIController {
 
             logoLink: document.getElementById('logoLink'),
             pageRangeCard: document.getElementById('pageRangeCard'),
-            resultsFileList: document.getElementById('resultsFileList')
+            resultsFileList: document.getElementById('resultsFileList'),
+            featuresSection: document.getElementById('featuresSection'),
+
+            // Modals
+            privacyModal: document.getElementById('privacyModal'),
+            termsModal: document.getElementById('termsModal'),
+            openPrivacyModal: document.getElementById('openPrivacyModal'),
+            openTermsModal: document.getElementById('openTermsModal'),
+            closePrivacyModal: document.getElementById('closePrivacyModal'),
+            closeTermsModal: document.getElementById('closeTermsModal')
         };
 
         this.previewController = new PreviewController();
@@ -409,6 +418,58 @@ class UIController {
         this.elements.themeToggle?.addEventListener('click', () => {
             this.toggleTheme();
         });
+
+        // Modal events
+        this.elements.openPrivacyModal?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.openModal('privacyModal');
+        });
+        this.elements.openTermsModal?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.openModal('termsModal');
+        });
+        this.elements.closePrivacyModal?.addEventListener('click', () => {
+            this.closeModal('privacyModal');
+        });
+        this.elements.closeTermsModal?.addEventListener('click', () => {
+            this.closeModal('termsModal');
+        });
+
+        // Close modals on overlay click
+        ['privacyModal', 'termsModal'].forEach(id => {
+            this.elements[id]?.addEventListener('click', (e) => {
+                if (e.target === this.elements[id]) {
+                    this.closeModal(id);
+                }
+            });
+        });
+
+        // Close modals on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeModal('privacyModal');
+                this.closeModal('termsModal');
+            }
+        });
+    }
+
+    openModal(modalId) {
+        const modal = this.elements[modalId];
+        if (!modal) return;
+        modal.style.display = 'flex';
+        // Force reflow then animate
+        requestAnimationFrame(() => {
+            modal.classList.add('active');
+        });
+    }
+
+    closeModal(modalId) {
+        const modal = this.elements[modalId];
+        if (!modal) return;
+        modal.classList.remove('active');
+        setTimeout(() => {
+            modal.style.display = 'none';
+        }, 300);
     }
 
     handleFileSelect(files) {
@@ -440,6 +501,9 @@ class UIController {
         this.showSection('fileListSection');
         this.showSection('configSection');
         this.updatePageRangeVisibility();
+
+        // Fade out features section
+        this.hideFeaturesSection();
     }
 
     async updateFileList() {
@@ -505,6 +569,8 @@ class UIController {
         if (AppState.files.length === 0) {
             this.hideSection('fileListSection');
             this.hideSection('configSection');
+            // Fade back in features section
+            this.showFeaturesSection();
         } else {
             this.updateFileList();
             this.updatePageRangeVisibility();
@@ -515,6 +581,9 @@ class UIController {
         AppState.files = [];
         this.hideSection('fileListSection');
         this.hideSection('configSection');
+
+        // Fade back in features section
+        this.showFeaturesSection();
     }
 
     async processFiles() {
@@ -695,7 +764,7 @@ class UIController {
             const url = URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'pdf_inverter_batch.zip';
+            a.download = 'pdf_flux_batch.zip';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -738,6 +807,9 @@ class UIController {
         this.hideSection('previewSection');
         this.hideSection('processingSection');
         this.showSection('uploadSection');
+
+        // Show features section again
+        this.showFeaturesSection();
 
         if (openPicker) {
             requestAnimationFrame(() => {
@@ -903,6 +975,27 @@ class UIController {
         }
     }
 
+    // Feature showcase fade transitions
+    hideFeaturesSection() {
+        const features = this.elements.featuresSection;
+        if (!features) return;
+        features.classList.add('fade-out');
+        const onTransitionEnd = () => {
+            features.classList.add('hidden');
+            features.removeEventListener('transitionend', onTransitionEnd);
+        };
+        features.addEventListener('transitionend', onTransitionEnd);
+    }
+
+    showFeaturesSection() {
+        const features = this.elements.featuresSection;
+        if (!features) return;
+        features.classList.remove('hidden');
+        // Force reflow then fade in
+        void features.offsetHeight;
+        features.classList.remove('fade-out');
+    }
+
     // Theme Management
     initTheme() {
         storage.init().then(() => {
@@ -994,7 +1087,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize UI
     const ui = new UIController();
     
-    console.log('PDF Inverter initialized');
+    console.log('PDF-Flux initialized');
 });
 
 // ========================================
