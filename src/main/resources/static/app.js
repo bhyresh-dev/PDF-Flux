@@ -24,7 +24,7 @@ const AppState = {
 // ========================================
 
 const API_CONFIG = {
-    baseUrl: 'http://localhost:9090/api',
+    baseUrl: '/api',
     endpoints: {
         process: '/pdf/process',
         batch: '/pdf/batch',

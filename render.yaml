@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: pdf-flux
+    runtime: docker
+    repo: https://github.com/bhyresh-dev/PDF-Flux
+    branch: master
+    plan: starter
+    healthCheckPath: /api/pdf/health
+    envVars:
+      - key: PORT
+        value: "9090"
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: JAVA_OPTS
+        value: "-Xmx512m -Xms256m"

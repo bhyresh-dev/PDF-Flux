@@ -1,13 +1,17 @@
 # PDF Inverter API Documentation
 
 ## Base URL
+
+When running locally, the API is available at:
 ```
 http://localhost:9090/api
 ```
 
-For production, replace with your domain:
+The frontend uses relative URLs (`/api`), so it works on any domain automatically.
+
+For production, deploy behind a reverse proxy:
 ```
-https://api.pdfinverter.com/api
+https://pdfinverter.com/api
 ```
 
 ---
@@ -63,7 +67,7 @@ Process a single PDF file with color inversion.
 **Request Example**:
 
 ```bash
-curl -X POST http://localhost:8080/api/pdf/process \
+curl -X POST http://localhost:9090/api/pdf/process \
   -F "file=@document.pdf" \
   -F "mode=FULL" \
   -F "rangeType=CUSTOM" \
@@ -118,7 +122,7 @@ Process multiple PDF files and return as ZIP archive.
 **Request Example**:
 
 ```bash
-curl -X POST http://localhost:8080/api/pdf/batch \
+curl -X POST http://localhost:9090/api/pdf/batch \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf" \
   -F "files=@doc3.pdf" \
@@ -154,7 +158,7 @@ Check if the API is running.
 **Request Example**:
 
 ```bash
-curl http://localhost:8080/api/pdf/health
+curl http://localhost:9090/api/pdf/health
 ```
 
 **Success Response**:
@@ -177,7 +181,7 @@ Get API version and capabilities.
 **Request Example**:
 
 ```bash
-curl http://localhost:8080/api/pdf/info
+curl http://localhost:9090/api/pdf/info
 ```
 
 **Success Response**:
@@ -352,9 +356,10 @@ X-RateLimit-Reset: 1675862400
 
 **Allowed Origins** (Development):
 ```
-http://localhost:3000
-http://localhost:8080
+http://localhost:9090
 ```
+
+Since the frontend is served from the same origin as the API, CORS is not required in the default setup.
 
 **Allowed Methods**:
 ```
@@ -366,10 +371,10 @@ GET, POST, OPTIONS
 Content-Type, Authorization
 ```
 
-For production, update `PDFInverterApplication.java`:
+For production with cross-origin access, set the `CORS_ORIGINS` environment variable:
 
-```java
-.allowedOrigins("https://your-production-domain.com")
+```bash
+CORS_ORIGINS=https://example.com,https://app.example.com java -jar target/pdf-inverter-backend-1.0.0.jar
 ```
 
 ---
@@ -433,7 +438,7 @@ async function processPDF(file, mode = 'FULL') {
     formData.append('mode', mode);
     formData.append('rangeType', 'ALL');
 
-    const response = await fetch('http://localhost:8080/api/pdf/process', {
+    const response = await fetch('/api/pdf/process', {
         method: 'POST',
         body: formData
     });
@@ -461,7 +466,7 @@ def process_pdf(file_path, mode='FULL'):
         }
         
         response = requests.post(
-            'http://localhost:8080/api/pdf/process',
+            'http://localhost:9090/api/pdf/process',
             files=files,
             data=data
         )
@@ -477,12 +482,12 @@ def process_pdf(file_path, mode='FULL'):
 
 ```bash
 # Simple processing
-curl -X POST http://localhost:8080/api/pdf/process \
+curl -X POST http://localhost:9090/api/pdf/process \
   -F "file=@input.pdf" \
   --output output.pdf
 
 # With all options
-curl -X POST http://localhost:8080/api/pdf/process \
+curl -X POST http://localhost:9090/api/pdf/process \
   -F "file=@input.pdf" \
   -F "mode=CUSTOM" \
   -F "rangeType=CUSTOM" \
@@ -492,7 +497,7 @@ curl -X POST http://localhost:8080/api/pdf/process \
   --output output.pdf
 
 # Health check
-curl http://localhost:8080/api/pdf/health
+curl http://localhost:9090/api/pdf/health
 ```
 
 ---

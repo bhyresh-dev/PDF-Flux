@@ -70,16 +70,16 @@ This document describes the production-ready architecture of the PDF Color Inver
 ### Component Structure
 
 ```
-Frontend/
-├── index.html          # Single-page application
-├── styles.css          # Professional styling
-└── app.js              # Application logic
+src/main/resources/static/    # Served by Spring Boot at /
+├── index.html                # Single-page application
+├── styles.css                # Professional styling
+└── app.js                    # Application logic
 
 app.js Components:
 ├── AppState            # Centralized state management
 ├── UIController        # DOM manipulation and events
 ├── StorageManager      # IndexedDB wrapper
-└── API Client          # Backend communication
+└── API Client          # Backend communication (relative /api URLs)
 ```
 
 ### State Management
@@ -279,7 +279,7 @@ Contrast Ratio: 12.63:1 (WCAG AAA)
    └─> Keep file for 1 hour
 
 4. Cleanup
-   └─> Scheduled task runs hourly
+   └─> Scheduled task runs every 30 minutes
    └─> Delete files older than 1 hour
 ```
 
@@ -648,10 +648,13 @@ GET /actuator/health/readiness
 ### Development Environment
 
 ```
-Developer Machine
-├── Frontend: http://localhost:3000
-└── Backend: http://localhost:8080
+Single Server (Spring Boot)
+├── Frontend: http://localhost:9090/
+└── Backend API: http://localhost:9090/api
 ```
+
+Run with: `java -jar target/pdf-inverter-backend-1.0.0.jar`
+Port is configurable via `PORT` environment variable (default: 9090).
 
 ### Production Environment (Recommended)
 
@@ -691,10 +694,11 @@ COPY target/*.jar app.jar
 RUN mkdir -p /tmp/pdf-inverter && \
     chmod 700 /tmp/pdf-inverter
 
-EXPOSE 8080
+EXPOSE 9090
+ENV PORT=9090
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD wget --no-verbose --tries=1 --spider \
-  http://localhost:8080/api/health || exit 1
+  http://localhost:9090/api/health || exit 1
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
@@ -703,21 +707,15 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 ```yaml
 version: '3.8'
 services:
-  backend:
-    build: ./backend
+  app:
+    build: .
     ports:
-      - "8080:8080"
+      - "9090:9090"
     environment:
+      - PORT=9090
       - SPRING_PROFILES_ACTIVE=development
     volumes:
       - ./temp:/tmp/pdf-inverter
-  
-  frontend:
-    image: nginx:alpine
-    ports:
-      - "3000:80"
-    volumes:
-      - ./frontend:/usr/share/nginx/html
 ```
 
 ### Kubernetes Deployment (Advanced)
@@ -742,7 +740,10 @@ spec:
       - name: backend
         image: pdf-inverter-backend:1.0.0
         ports:
-        - containerPort: 8080
+        - containerPort: 9090
+        env:
+        - name: PORT
+          value: "9090"
         resources:
           requests:
             memory: "2Gi"
@@ -753,7 +754,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /api/health
-            port: 8080
+            port: 9090
           initialDelaySeconds: 30
           periodSeconds: 10
 ```

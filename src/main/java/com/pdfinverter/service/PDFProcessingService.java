@@ -10,12 +10,15 @@ import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -252,5 +255,54 @@ public class PDFProcessingService {
         String baseName = originalFilename.replaceFirst("[.][^.]+$", "");
         String uniqueId = UUID.randomUUID().toString().substring(0, 8);
         return baseName + "_inverted_" + uniqueId + ".pdf";
+    }
+
+    /**
+     * Scheduled cleanup task that runs every 30 minutes.
+     * Deletes files in the temp directory that are older than 1 hour
+     * to prevent disk space exhaustion from single-file processing results.
+     */
+    @Scheduled(fixedRate = 30 * 60 * 1000) // every 30 minutes
+    public void cleanupTempFiles() {
+        File tempDir = new File(TEMP_DIR);
+        if (!tempDir.exists() || !tempDir.isDirectory()) {
+            return;
+        }
+
+        File[] files = tempDir.listFiles();
+        if (files == null || files.length == 0) {
+            return;
+        }
+
+        Instant cutoff = Instant.now().minus(Duration.ofHours(1));
+        int deletedCount = 0;
+        long freedBytes = 0;
+
+        for (File file : files) {
+            if (file.isFile()) {
+                Instant lastModified = Instant.ofEpochMilli(file.lastModified());
+                if (lastModified.isBefore(cutoff)) {
+                    long fileSize = file.length();
+                    if (file.delete()) {
+                        deletedCount++;
+                        freedBytes += fileSize;
+                    } else {
+                        log.warn("Failed to delete expired temp file: {}", file.getAbsolutePath());
+                    }
+                }
+            }
+        }
+
+        if (deletedCount > 0) {
+            String freedFormatted = humanReadableByteCount(freedBytes);
+            log.info("Temp cleanup: deleted {} file(s), freed {}", deletedCount, freedFormatted);
+        }
+    }
+
+    private String humanReadableByteCount(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        int exp = (int) (Math.log(bytes) / Math.log(1024));
+        String unit = "KMGTPE".charAt(exp - 1) + "B";
+        return String.format("%.1f %s", bytes / Math.pow(1024, exp), unit);
     }
 }

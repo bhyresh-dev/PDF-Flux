@@ -27,7 +27,6 @@ cd PDF-Flux
 ### Prerequisites
 - Java 17 or higher
 - Maven (required for building the backend JAR)
-- Python 3 (for serving frontend)
 
 ### 1️⃣ Build Backend (First time / after cloning)
 The `target/` folder is not included in the repository. You must build the JAR before running:
@@ -36,25 +35,21 @@ The `target/` folder is not included in the repository. You must build the JAR b
 mvn clean package -DskipTests
 ```
 
-### 2️⃣ Start Backend (Port 9090)
-This runs the Java Spring Boot server that handles PDF processing.
+### 2️⃣ Start Application (Port 9090)
+This runs the Spring Boot server which serves both the backend API and the frontend UI.
 
 ```powershell
-# In Terminal 1
 java -jar target/pdf-inverter-backend-1.0.0.jar
 ```
 
-### 2️⃣ Start Frontend (Port 8080)
-This serves the web interface.
-
+To use a custom port, set the `PORT` environment variable:
 ```powershell
-# In Terminal 2
-python -m http.server 8080
+$env:PORT=8080; java -jar target/pdf-inverter-backend-1.0.0.jar
 ```
 
 ### 3️⃣ Access Application
 Open your browser and navigate to:
-**http://localhost:8080/index.html**
+**http://localhost:9090/**
 
 ---
 
@@ -62,18 +57,25 @@ Open your browser and navigate to:
 
 ```
 PDF-FLux/
-├── src/                       # Java Spring Boot Source Code
-│   └── main/java/com/pdfinverter/
-│       ├── controller/        # API Endpoints
-│       ├── model/             # Data Models
-│       ├── service/           # PDF Processing Logic
-│       └── util/              # Color Inversion Algorithms
-├── target/                    # Compiled Executable (JAR files)
-├── index.html                 # Frontend User Interface
-├── app.js                     # Frontend Logic (API calls, Preview)
-├── styles.css                 # Application Styling
-├── pom.xml                    # Maven Build Configuration
-└── API.md                     # API Documentation
+├── src/
+│   └── main/
+│       ├── java/com/pdfinverter/
+│       │   ├── controller/        # API Endpoints
+│       │   ├── model/             # Data Models
+│       │   ├── service/           # PDF Processing Logic
+│       │   └── util/              # Color Inversion Algorithms
+│       └── resources/
+│           ├── application.properties
+│           └── static/            # Frontend (served by Spring Boot)
+│               ├── index.html
+│               ├── app.js
+│               └── styles.css
+├── target/                        # Compiled Executable (JAR files)
+├── index.html                     # Frontend source (dev copy)
+├── app.js                         # Frontend source (dev copy)
+├── styles.css                     # Frontend source (dev copy)
+├── pom.xml                        # Maven Build Configuration
+└── API.md                         # API Documentation
 ```
 
 ## 🛠️ Development
@@ -86,8 +88,7 @@ mvn clean install -DskipTests
 ```
 
 ### Configuration
-- **Backend Port**: 9090 (Configured in `src/main/resources/application.properties`)
-- **Frontend Port**: 8080 (Default for python http.server)
+- **Server Port**: 9090 by default, configurable via `PORT` environment variable (set in `src/main/resources/application.properties`)
 - **Upload Limit**: 50MB
 
 ---
@@ -168,37 +169,36 @@ We manipulate the actual PDF structure, not screenshots.
 
 ### Prerequisites
 
-- **Frontend**: Any modern web browser
-- **Backend**: 
+- **Browser**: Any modern web browser
+- **Runtime**: 
   - Java 17 or higher
-  - Maven 3.6+
+  - Maven 3.6+ (for building)
   - 4GB RAM minimum
 
 ### Running Locally
 
-#### 1. Start Backend
+#### 1. Build
 
 ```bash
-cd backend
-mvn clean install
-mvn spring-boot:run
+mvn clean package -DskipTests
 ```
 
-Backend will start on `http://localhost:8080`
-
-#### 2. Start Frontend
+#### 2. Run
 
 ```bash
-cd frontend
-python3 -m http.server 3000
-# or use any static file server
+java -jar target/pdf-inverter-backend-1.0.0.jar
 ```
 
-Frontend will be available at `http://localhost:3000`
+The application (frontend + backend) will be available at `http://localhost:9090`
+
+To use a custom port:
+```bash
+PORT=8080 java -jar target/pdf-inverter-backend-1.0.0.jar
+```
 
 #### 3. Test the Application
 
-1. Open browser to `http://localhost:3000`
+1. Open browser to `http://localhost:9090`
 2. Upload a PDF file
 3. Select inversion mode
 4. Process and download
@@ -207,37 +207,20 @@ Frontend will be available at `http://localhost:3000`
 
 ## 🔧 Configuration
 
-### Backend Configuration
+### Configuration
 
-Edit `backend/src/main/resources/application.properties`:
+Edit `src/main/resources/application.properties`:
 
 ```properties
-# Server port
-server.port=8080
+# Server port (reads PORT env variable, defaults to 9090)
+server.port=${PORT:9090}
 
 # File upload limits
 spring.servlet.multipart.max-file-size=50MB
-spring.servlet.multipart.max-request-size=100MB
-
-# PDF processing settings
-pdf.processing.temp-dir=/tmp/pdf-inverter/
-pdf.processing.max-pages=500
-pdf.processing.default-dpi=300
+spring.servlet.multipart.max-request-size=50MB
 ```
 
-### Frontend Configuration
-
-Edit `frontend/app.js`:
-
-```javascript
-const API_CONFIG = {
-    baseUrl: 'http://localhost:8080/api',
-    endpoints: {
-        process: '/pdf/process',
-        batch: '/pdf/batch'
-    }
-};
-```
+The frontend uses relative API URLs (`/api`), so no frontend configuration is needed — it works on any domain automatically.
 
 ---
 
@@ -345,7 +328,7 @@ Response: 200 OK
 3. **Temporary Files**:
    - Created in system temp directory
    - Unique IDs prevent collisions
-   - Automatic cleanup task runs hourly
+   - Automatic cleanup task runs every 30 minutes
 
 ### Security Best Practices
 
@@ -388,7 +371,7 @@ mvn test
 
 ```bash
 # Test API endpoint
-curl -X POST http://localhost:8080/api/pdf/process \
+curl -X POST http://localhost:9090/api/pdf/process \
   -F "file=@test.pdf" \
   -F "mode=FULL" \
   -F "rangeType=ALL" \
@@ -417,21 +400,22 @@ Open `frontend/index.html` in browser and:
 FROM openjdk:17-slim
 WORKDIR /app
 COPY target/pdf-inverter-backend-1.0.0.jar app.jar
-EXPOSE 8080
+EXPOSE 9090
+ENV PORT=9090
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
 Build and run:
 ```bash
-mvn clean package
-docker build -t pdf-inverter-backend .
-docker run -p 8080:8080 pdf-inverter-backend
+mvn clean package -DskipTests
+docker build -t pdf-inverter .
+docker run -p 9090:9090 pdf-inverter
 ```
 
 #### Option 2: JAR Deployment
 
 ```bash
-mvn clean package
+mvn clean package -DskipTests
 java -jar target/pdf-inverter-backend-1.0.0.jar
 ```
 
@@ -442,29 +426,44 @@ java -jar target/pdf-inverter-backend-1.0.0.jar
 3. Configure load balancer
 4. Set up auto-scaling
 
-### Frontend Deployment
+#### Option 4: Railway / Render / Heroku
 
-#### Static Hosting (Recommended)
+These platforms auto-detect the `Procfile` and `system.properties` in the project root:
 
-1. **Netlify/Vercel**:
-   - Drop `frontend/` folder
-   - Auto-deploy
+- **`Procfile`** — Defines the start command with JVM memory flags:
+  ```
+  web: java -Xmx512m -Xms256m -jar target/pdf-inverter-backend-1.0.0.jar
+  ```
+- **`system.properties`** — Pins the Java runtime version:
+  ```
+  java.runtime.version=17
+  ```
 
-2. **AWS S3 + CloudFront**:
-   - Upload to S3 bucket
-   - Enable static website hosting
-   - Add CloudFront for CDN
+**Memory Settings Explained:**
 
-3. **Nginx**:
+| Flag | Value | Purpose |
+|------|-------|---------|
+| `-Xms256m` | 256 MB | Initial heap size — what the JVM allocates at startup |
+| `-Xmx512m` | 512 MB | Maximum heap size — hard cap to prevent OOM crashes |
+
+The `-Xmx512m` cap is critical in containerized environments where exceeding the memory limit causes the platform to kill the process. 512 MB is sufficient for typical single-file and small-batch PDF processing. For heavier workloads, increase to `-Xmx1g` or higher depending on your plan's memory allowance.
+
+To deploy, simply push your repository — the platform will run `mvn clean package -DskipTests` automatically (or you can configure a custom build command), then launch using the `Procfile`.
+
+### Frontend
+
+The frontend is bundled inside the Spring Boot JAR under `src/main/resources/static/`. No separate frontend hosting is needed — Spring Boot serves `index.html`, `app.js`, and `styles.css` at the root path (`/`).
+
+For production with a reverse proxy (e.g., Nginx):
 ```nginx
 server {
     listen 80;
     server_name pdfinverter.com;
-    root /var/www/pdf-inverter/frontend;
-    index index.html;
     
     location / {
-        try_files $uri $uri/ =404;
+        proxy_pass http://localhost:9090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
