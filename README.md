@@ -60,22 +60,27 @@ PDF-FLux/
 ├── src/
 │   └── main/
 │       ├── java/com/pdfinverter/
+│       │   ├── config/            # Rate Limiting Filter & Configuration
 │       │   ├── controller/        # API Endpoints
 │       │   ├── model/             # Data Models
 │       │   ├── service/           # PDF Processing Logic
-│       │   └── util/              # Color Inversion Algorithms
+│       │   └── util/              # Color Inversion Algorithms, Rate Limiter
 │       └── resources/
-│           ├── application.properties
+│           ├── application.properties       # Default config (port 9090)
+│           ├── application-prod.properties  # Production config
 │           └── static/            # Frontend (served by Spring Boot)
 │               ├── index.html
 │               ├── app.js
 │               └── styles.css
 ├── target/                        # Compiled Executable (JAR files)
-├── index.html                     # Frontend source (dev copy)
-├── app.js                         # Frontend source (dev copy)
-├── styles.css                     # Frontend source (dev copy)
+├── Dockerfile                     # Multi-stage Docker build
+├── Procfile                       # Heroku / Render start command
+├── render.yaml                    # Render deployment config
+├── system.properties              # Java runtime version for PaaS
 ├── pom.xml                        # Maven Build Configuration
-└── API.md                         # API Documentation
+├── API.md                         # API Documentation
+├── ARCHITECTURE.md                # System Architecture Documentation
+└── README.md                      # This file
 ```
 
 ## 🛠️ Development

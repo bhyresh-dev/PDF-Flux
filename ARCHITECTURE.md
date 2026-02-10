@@ -174,6 +174,12 @@ Database: PDFInverterDB
 └─────────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────────┐
+│          Configuration Layer                 │
+│  - Rate limiting filter (30 req/min per IP) │
+│  - Servlet filter registration              │
+└─────────────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────────────┐
 │            Service Layer                     │
 │  - Business logic                           │
 │  - PDF processing orchestration             │
@@ -184,6 +190,7 @@ Database: PDFInverterDB
 │            Utility Layer                     │
 │  - Color inversion algorithms               │
 │  - Page range parsing                       │
+│  - Rate limiter (sliding window)            │
 │  - Helper functions                         │
 └─────────────────────────────────────────────┘
               ↓
@@ -684,23 +691,32 @@ Port is configurable via `PORT` environment variable (default: 9090).
 
 ### Container Deployment (Docker)
 
-**Dockerfile**:
+**Dockerfile** (multi-stage build):
 ```dockerfile
-FROM eclipse-temurin:17-jre-alpine
+# Stage 1: Build
+FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
-COPY target/*.jar app.jar
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+COPY src ./src
+RUN mvn clean package -DskipTests -B
 
-# Create temp directory
-RUN mkdir -p /tmp/pdf-inverter && \
-    chmod 700 /tmp/pdf-inverter
+# Stage 2: Runtime
+FROM eclipse-temurin:17-jre-jammy
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system appuser && useradd --system --gid appuser appuser
+COPY --from=build /app/target/pdf-inverter-backend-1.0.0.jar app.jar
+RUN mkdir -p /app/tmp && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 9090
 ENV PORT=9090
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD wget --no-verbose --tries=1 --spider \
-  http://localhost:9090/api/health || exit 1
+  CMD curl -f http://localhost:9090/api/pdf/health || exit 1
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Xmx512m", "-Xms256m", "-jar", "app.jar"]
 ```
 
 **Docker Compose** (for development):

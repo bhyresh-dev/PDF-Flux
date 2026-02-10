@@ -2,6 +2,8 @@
 // Application State Management
 // ========================================
 
+let fileIdCounter = 0;
+
 const AppState = {
     files: [],
     currentConfig: {
@@ -322,6 +324,8 @@ class UIController {
 
         this.elements.fileInput.addEventListener('change', (e) => {
             this.handleFileSelect(e.target.files);
+            // Reset so selecting the same file again triggers 'change'
+            this.elements.fileInput.value = '';
         });
 
         // Config events
@@ -424,6 +428,7 @@ class UIController {
 
         pdfFiles.forEach(file => {
             AppState.files.push({
+                id: ++fileIdCounter,
                 file: file,
                 name: file.name,
                 size: this.formatFileSize(file.size),
@@ -465,7 +470,7 @@ class UIController {
                     </div>
                 </div>
                 <div class="file-actions">
-                    <button class="file-remove" data-file="${fileData.name}">
+                    <button class="file-remove" data-file-id="${fileData.id}">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
                         </svg>
@@ -474,7 +479,7 @@ class UIController {
             `;
 
             fileItem.querySelector('.file-remove').addEventListener('click', () => {
-                this.removeFile(fileData.name);
+                this.removeFile(fileData.id);
             });
 
             this.elements.fileList.appendChild(fileItem);
@@ -492,8 +497,10 @@ class UIController {
         }
     }
 
-    removeFile(fileName) {
-        AppState.files = AppState.files.filter(f => f.name !== fileName);
+    removeFile(fileId) {
+        AppState.files = AppState.files.filter(f => f.id !== fileId);
+        // Reset file input so re-selecting the same file triggers 'change'
+        this.elements.fileInput.value = '';
         
         if (AppState.files.length === 0) {
             this.hideSection('fileListSection');
@@ -619,6 +626,9 @@ class UIController {
             });
 
             if (!response.ok) {
+                if (response.status === 429) {
+                    throw new Error('Rate limit reached. Please wait a minute and try again.');
+                }
                 const errorText = await response.text();
                 console.error('Server error:', errorText);
                 throw new Error(`Processing failed: ${response.statusText}`);
@@ -628,10 +638,11 @@ class UIController {
             const fileName = fileData.name.replace('.pdf', '_inverted.pdf');
 
             const existingIndex = AppState.processedFiles.findIndex(
-                item => item.originalFile.name === fileData.file.name
+                item => item.fileId === fileData.id
             );
 
             const processedEntry = {
+                fileId: fileData.id,
                 name: fileName,
                 blob: blob,
                 originalFile: fileData.file

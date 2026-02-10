@@ -54,7 +54,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().write(
-                    "{\"error\": \"Too many requests. You are limited to 10 requests per minute. Please try again shortly.\"}"
+                    "{\"error\": \"Too many requests. You are limited to 30 requests per minute. Please try again shortly.\"}"
             );
             return;
         }

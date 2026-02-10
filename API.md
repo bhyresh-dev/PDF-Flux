@@ -327,6 +327,7 @@ Process only even-numbered pages.
 | 413 | Payload Too Large | File exceeds size limit |
 | 415 | Unsupported Media Type | Wrong content type |
 | 422 | Unprocessable Entity | Corrupted PDF or processing error |
+| 429 | Too Many Requests | Rate limit exceeded (30 req/min) |
 | 500 | Internal Server Error | Server-side processing failure |
 | 503 | Service Unavailable | Server overloaded |
 
@@ -334,19 +335,22 @@ Process only even-numbered pages.
 
 ## Rate Limiting
 
-**Current**: No rate limiting (MVP)
+**Current**: 30 requests per minute per IP address (sliding window).
 
-**Recommended for Production**:
-```
-- 100 requests per hour per IP
-- 10 concurrent processing requests
-- 1GB total upload per day per IP
-```
+The `/api/pdf/health` endpoint is excluded from rate limiting.
 
-**Headers**:
+**Response When Limited**:
 ```http
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
+HTTP/1.1 429 Too Many Requests
+Content-Type: text/plain
+
+Rate limit exceeded. Maximum 30 requests per minute. Please wait and try again.
+```
+
+**Headers** (planned for future):
+```http
+X-RateLimit-Limit: 30
+X-RateLimit-Remaining: 25
 X-RateLimit-Reset: 1675862400
 ```
 

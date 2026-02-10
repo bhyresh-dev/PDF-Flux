@@ -13,7 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Component
 public class RateLimiter {
 
-    private static final int MAX_REQUESTS = 10;
+    private static final int MAX_REQUESTS = 30;
     private static final long WINDOW_MILLIS = 60_000; // 1 minute
 
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<Long>> requestCounts = new ConcurrentHashMap<>();
