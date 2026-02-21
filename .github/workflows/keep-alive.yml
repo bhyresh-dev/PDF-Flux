@@ -1,0 +1,82 @@
+name: Keep OpenShift Pod Alive
+
+on:
+  schedule:
+    # Runs every 11 hours - catches the pod before sandbox kills it at 12h
+    - cron: '0 */11 * * *'
+  
+  workflow_dispatch:  # Adds a manual "Run workflow" button
+
+jobs:
+  scale-up-pod:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Install OpenShift CLI
+        run: |
+          echo "📦 Installing oc CLI..."
+          curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/openshift-client-linux.tar.gz
+          tar xvf openshift-client-linux.tar.gz
+          sudo mv oc /usr/local/bin/
+          oc version --client
+          echo "✅ oc CLI installed"
+      
+      - name: Login to OpenShift
+        env:
+          OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+          OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+        run: |
+          echo "🔐 Logging in to OpenShift..."
+          oc login --token=$OPENSHIFT_TOKEN --server=$OPENSHIFT_SERVER --insecure-skip-tls-verify
+          echo "✅ Login successful"
+      
+      - name: Check current replica count
+        id: check
+        run: |
+          echo "🔍 Checking deployment status..."
+          REPLICAS=$(oc get deployment/pdf-flux -n bhyresh-dev-dev -o jsonpath='{.spec.replicas}')
+          echo "Current replicas: $REPLICAS"
+          echo "replicas=$REPLICAS" >> $GITHUB_OUTPUT
+      
+      - name: Scale up if needed
+        run: |
+          REPLICAS=${{ steps.check.outputs.replicas }}
+          
+          if [ "$REPLICAS" -eq "0" ]; then
+            echo "🚀 Pod is down (replicas=0). Scaling up to 1..."
+            oc scale deployment/pdf-flux --replicas=1 -n bhyresh-dev-dev
+            echo "✅ Scale command sent"
+          else
+            echo "✅ Pod is already running with $REPLICAS replica(s)"
+          fi
+      
+      - name: Wait for pod to be ready
+        run: |
+          echo "⏳ Waiting for pod to become ready (max 2 minutes)..."
+          oc wait --for=condition=available --timeout=120s deployment/pdf-flux -n bhyresh-dev-dev || true
+          echo "✅ Pod should be ready now"
+      
+      - name: Verify app is responding
+        run: |
+          echo "🌐 Testing if app is responding..."
+          ROUTE=$(oc get route pdf-flux-route -n bhyresh-dev-dev -o jsonpath='{.spec.host}')
+          echo "App URL: https://$ROUTE"
+          
+          sleep 15  # Give app time to fully start
+          
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://$ROUTE/api/health)
+          
+          if [ "$HTTP_CODE" -eq "200" ]; then
+            echo "✅ App is responding correctly (HTTP $HTTP_CODE)"
+          else
+            echo "⚠️  App returned HTTP $HTTP_CODE - may still be starting"
+          fi
+      
+      - name: Summary
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📊 Keep-Alive Check Complete"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Timestamp: $(date)"
+          echo "Next scheduled run: in 11 hours"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
